@@ -1,0 +1,9 @@
+FROM python:3.9
+WORKDIR /app
+RUN pip install gunicorn==20.1.0
+COPY requirements.txt .
+RUN pip install -r requirements.txt --no-cache-dir
+COPY . .
+ENV PYTHONPATH=/app/foodgram
+ENV DJANGO_SETTINGS_MODULE=foodgram.settings
+CMD ["gunicorn", "--bind", "0.0.0.0:8001", "foodgram.wsgi"]

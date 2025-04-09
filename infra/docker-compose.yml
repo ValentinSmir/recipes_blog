@@ -2,12 +2,12 @@ version: '3.3'
 services:
 
   frontend:
-    container_name: foodgram-front
+    container_name: foodgram-frontend
     build: ../frontend
     volumes:
       - ../frontend/:/app/result_build/
   nginx:
-    container_name: foodgram-proxy
+    container_name: foodgram-doc
     image: nginx:1.25.4-alpine
     ports:
       - "80:80"
