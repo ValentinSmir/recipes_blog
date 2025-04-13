@@ -17,8 +17,7 @@ from rest_framework.response import Response
 
 from recipes.models import (Recipe, Ingredient, Tag, Favorite,
                             ShoppingCart, IngredientRecipe)
-from .serializers import (MyUserSerializer,
-                          TagSerializer,
+from .serializers import (TagSerializer,
                           RecipeCreateUpdateSerializer,
                           RecipeListSerializer,
                           IngredientSerializer,
@@ -80,20 +79,6 @@ class UserViewSet(DjoserUserViewSet):
             context={'request': request}
         )
 
-        # data = serializer.data
-        # for author_data, author in zip(data, subscribed_users):
-        #     recipes = author.recipes.all()
-        #     author_data['recipes'] = [
-        #         {
-        #             'id': recipe.id,
-        #             'name': recipe.name,
-        #             'image': recipe.image.url if recipe.image else None,
-        #             'cooking_time': recipe.cooking_time
-        #         }
-        #         for recipe in recipes
-        #     ]
-        #     author_data['recipes_count'] = len(author_data['recipes'])
-
         return Response(serializer.data)
 
     @action(
@@ -109,31 +94,10 @@ class UserViewSet(DjoserUserViewSet):
                                                 data=request.data,
                                                 context={'request': request})
             serializer.is_valid(raise_exception=True)
-            # if user == author:
-            #     return Response(
-            #         {'error': 'Нельзя подписаться на самого себя.'},
-            #         status=status.HTTP_400_BAD_REQUEST
-            #     )
-            # if user.subscriptions.filter(author=author).exists():
-            #     return Response(
-            #         {'error': 'Вы уже подписаны на этого пользователя.'},
-            #         status=status.HTTP_400_BAD_REQUEST
-            #     )
             user.subscriptions.create(author=author)
-            # recipes = author.recipes.all()
-            # response_data['recipes'] = [
-            #     {
-            #         'id': recipe.id,
-            #         'name': recipe.name,
-            #         'image': recipe.image.url,
-            #         'cooking_time': recipe.cooking_time
-            #     }
-            #     for recipe in recipes]
-            # response_data['recipes_count'] = author.recipes.count()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         elif request.method == 'DELETE':
             subscription = user.subscriptions.get(author=author)
-            # subscription = user.subscriptions.filter(author=author).first()
             if not subscription:
                 return Response(
                     {'error': 'Вы не подписаны на этого пользователя.'},
@@ -219,8 +183,6 @@ class RecipeViewSet(viewsets.ModelViewSet):
         recipe = get_object_or_404(Recipe, pk=pk)
         if request.method == 'POST':
             if user.favorites.filter(recipe=recipe).exists():
-            # if Favorite.objects.filter(user=request.user,
-            #                            recipe=recipe).exists():
                 return Response(
                     {'errors': 'Рецепт уже в избранном.'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -234,14 +196,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
             )
         elif request.method == 'DELETE':
             favorite, _ = user.favorites.filter(recipe=recipe).delete()
-            # favorite = Favorite.objects.filter(user=request.user,
-            #                                    recipe=recipe)
             if favorite == 0:
                 return Response(
                     {'errors': 'Рецепта нет в избранном.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            # favorite.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
@@ -254,8 +213,6 @@ class RecipeViewSet(viewsets.ModelViewSet):
         recipe = get_object_or_404(Recipe, pk=pk)
         if request.method == 'POST':
             if user.shopping_cart_user.filter(recipe=recipe).exists():
-            # if ShoppingCart.objects.filter(user=request.user,
-            #                                recipe=recipe).exists():
                 return Response(
                     {'errors': 'Рецепт уже в списке покупок.'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -274,7 +231,6 @@ class RecipeViewSet(viewsets.ModelViewSet):
                     {'errors': 'Рецепта нет в списке покупок.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            # cart.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
@@ -283,24 +239,6 @@ class RecipeViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated]
     )
     def download_shopping_cart(self, request):
-        # shopping_cart = ShoppingCart.objects.filter(user=request.user)
-        # recipes = [item.recipe for item in shopping_cart]
-        # recipes = request.user.shopping_cart_user.all().select_related(
-        #     'recipe')
-        # ingredients = {}
-        # for recipe in recipes:
-        #     for ingredient_recipe in recipe.infredients_recipe.all():
-        #         name = ingredient_recipe.ingredient.name
-        #         amount = ingredient_recipe.amount
-        #         measurement_unit = (ingredient_recipe.ingredient
-        #                             .measurement_unit)
-        #         if name in ingredients:
-        #             ingredients[name]['amount'] += amount
-        #         else:
-        #             ingredients[name] = {
-        #                 'amount': amount,
-        #                 'measurement_unit': measurement_unit
-        #             }
         ingredients_data = (
             IngredientRecipe.objects
             .filter(recipe__shopping_cart__user=request.user)

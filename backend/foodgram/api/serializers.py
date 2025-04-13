@@ -83,7 +83,6 @@ class SubscriptionSerializer(serializers.ModelSerializer):
         return data
 
     def get_recipes(self, obj):
-        # request = self.context.get('request')
         recipes = obj.recipes.all()
         return [{
             'id': recipe.id,
@@ -211,23 +210,6 @@ class RecipeCreateUpdateSerializer(serializers.ModelSerializer):
             **validated_data)
         recipe.tags.set(tags)
         self._create_recipe_ingredients(recipe, ingredients)
-        # ingredient_objs = []
-        # for ingredient in ingredients:
-        #     try:
-        #         ingredient_obj = Ingredient.objects.get(id=ingredient['id'])
-        #         ingredient_objs.append(
-        #             IngredientRecipe(
-        #                 recipe=recipe,
-        #                 ingredient=ingredient_obj,
-        #                 amount=ingredient['amount']
-        #             )
-        #         )
-        #     except Ingredient.DoesNotExist:
-        #         raise serializers.ValidationError(
-        #             {'ingredients': (
-        #                 f'Ингредиент с id {ingredient["id"]} не найден')}
-        #         )
-        # IngredientRecipe.objects.bulk_create(ingredient_objs)
         return recipe
 
     def update(self, instance, validated_data):
@@ -244,24 +226,6 @@ class RecipeCreateUpdateSerializer(serializers.ModelSerializer):
         if ingredients is not None:
             instance.infredients_recipe.all().delete()
             self._create_recipe_ingredients(instance, ingredients)
-
-        # ingredient_objs = []
-        # for ingredient in ingredients:
-        #     try:
-        #         ingredient_obj = Ingredient.objects.get(id=ingredient['id'])
-        #         ingredient_objs.append(
-        #             IngredientRecipe(
-        #                 recipe=instance,
-        #                 ingredient=ingredient_obj,
-        #                 amount=ingredient['amount']
-        #             )
-        #         )
-        #     except Ingredient.DoesNotExist:
-        #         raise serializers.ValidationError(
-        #             {'ingredients': (
-        #                 f'Ингредиент с id {ingredient["id"]} не найден')}
-        #         )
-        # IngredientRecipe.objects.bulk_create(ingredient_objs)
         return instance
 
     def _create_recipe_ingredients(self, recipe, ingredients_data):
