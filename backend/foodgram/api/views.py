@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django_filters.rest_framework import DjangoFilterBackend
 from djoser.views import UserViewSet as DjoserUserViewSet
 from rest_framework import filters, viewsets, status
@@ -318,4 +318,19 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     def _generate_short_link(self, recipe):
         hash_str = md5(str(recipe.id).encode()).hexdigest()[:6]
-        return f"https://localhost:8001/{hash_str}"
+        return f'https://food-gramm.zapto.org/r/{hash_str}'
+
+
+class ShortLinkRedirectView(viewsets.GenericViewSet):
+    permission_classes = [AllowAny]
+    lookup_field = 'hash_str'
+
+    def retrieve(self, request, hash_str=None):
+        recipes = Recipe.objects.all()
+        for recipe in recipes:
+            if md5(str(recipe.id).encode()).hexdigest()[:6] == hash_str:
+                return redirect('recipe-detail', pk=recipe.pk)
+        return Response(
+            {'error': 'Рецепт не найден'},
+            status=status.HTTP_404_NOT_FOUND
+        )
