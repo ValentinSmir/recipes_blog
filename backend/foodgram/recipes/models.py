@@ -1,16 +1,26 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 User = get_user_model()
 
+MAX_LENGHT_NAME_INGREDIENT = 128
+MAX_LENGHT_MEASUREMENT_UNIT = 64
+MAX_LENGHT_TAG = 32
+MAX_LENGHT_RECIPE = 256
+MAX_LENGHT_SHORTLINK = 10
+MAX_LENGHT = 32000
+MIN_LENGHT = 1
+
 
 class Ingredient(models.Model):
-    name = models.CharField(max_length=128,
+    name = models.CharField(max_length=MAX_LENGHT_NAME_INGREDIENT,
                             verbose_name='Название ингредиента')
-    measurement_unit = models.CharField(max_length=64,
+    measurement_unit = models.CharField(max_length=MAX_LENGHT_MEASUREMENT_UNIT,
                                         verbose_name='Единица измерения')
 
     class Meta:
+        ordering = ['name']
         verbose_name = 'Ингредиент'
         verbose_name_plural = 'Ингредиенты'
 
@@ -19,9 +29,9 @@ class Ingredient(models.Model):
 
 
 class Tag(models.Model):
-    name = models.CharField(max_length=32, unique=True,
+    name = models.CharField(max_length=MAX_LENGHT_TAG, unique=True,
                             verbose_name='Название тега')
-    slug = models.SlugField(max_length=32, unique=True,
+    slug = models.SlugField(max_length=MAX_LENGHT_TAG, unique=True,
                             verbose_name='слаг')
 
     class Meta:
@@ -37,7 +47,8 @@ class Recipe(models.Model):
     author = models.ForeignKey(User, related_name='recipes',
                                on_delete=models.CASCADE,
                                verbose_name='Автор')
-    name = models.CharField(max_length=256, verbose_name='Название рецепта')
+    name = models.CharField(max_length=MAX_LENGHT_RECIPE,
+                            verbose_name='Название рецепта')
     image = models.ImageField(
         upload_to='recipes/images/',
         verbose_name='Картинка'
@@ -47,7 +58,15 @@ class Recipe(models.Model):
                                          through='IngredientRecipe',
                                          verbose_name='Ингредиенты')
     tags = models.ManyToManyField(Tag, verbose_name='Теги')
-    cooking_time = models.PositiveIntegerField(
+    cooking_time = models.PositiveSmallIntegerField(
+        validators=[
+            MinValueValidator(
+                1,
+                message='Время приготовления должно быть не менее 1 минуты'),
+            MaxValueValidator(
+                32000,
+                message='Время приготовления не должно превышать 32,000 минут')
+        ],
         verbose_name='Время приготовления')
     created_at = models.DateTimeField(
         auto_now_add=True,
@@ -78,6 +97,7 @@ class Favorite(models.Model):
                 name='unique_favorite'
             )
         ]
+        ordering = ['recipe']
         verbose_name = 'Избранное'
         verbose_name_plural = 'Избранное'
 
@@ -100,6 +120,7 @@ class Subscription(models.Model):
                 name='unique_subscription'
             )
         ]
+        ordering = ['author']
         verbose_name = 'Подписка'
         verbose_name_plural = 'Подписки'
 
@@ -122,6 +143,7 @@ class ShoppingCart(models.Model):
     )
 
     class Meta:
+        ordering = ['recipe']
         verbose_name = 'Корзина покупок'
         verbose_name_plural = 'Корзина покупок'
         constraints = [models.UniqueConstraint(fields=['user', 'recipe'],
@@ -138,7 +160,19 @@ class IngredientRecipe(models.Model):
     recipe = models.ForeignKey(Recipe, on_delete=models.CASCADE,
                                related_name='infredients_recipe',
                                verbose_name='Рецепт')
-    amount = models.PositiveIntegerField(verbose_name='Количество')
+    amount = models.PositiveSmallIntegerField(
+        verbose_name='Количество',
+        validators=[
+            MinValueValidator(
+                1,
+                message='Время приготовления должно быть не менее 1 минуты'),
+            MaxValueValidator(
+                32000,
+                message='Время приготовления не должно превышать 32,000 минут')
+        ])
+
+    class Meta:
+        ordering = ['ingredient']
 
     def __str__(self):
         return (f'{self.ingredient.name} - '
@@ -154,6 +188,9 @@ class TagRecipe(models.Model):
                                verbose_name='Рецепт',
                                )
 
+    class Meta:
+        ordering = ['tag']
+
 
 class ShortLink(models.Model):
     recipe = models.OneToOneField(
@@ -161,5 +198,8 @@ class ShortLink(models.Model):
         on_delete=models.CASCADE,
         related_name='short_link'
     )
-    hash = models.CharField(max_length=10, unique=True)
+    hash = models.CharField(max_length=MAX_LENGHT_SHORTLINK, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

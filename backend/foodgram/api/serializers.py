@@ -1,14 +1,19 @@
 import base64
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from djoser.serializers import UserCreateSerializer as BaseUserCreateSerializer
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from recipes.models import (Recipe, Ingredient, Tag, IngredientRecipe)
 
 User = get_user_model()
+
+MAX_IMAGE_SIZE_BYTES = 100000
+MIN_AMOUNT = 1
+MAX_AMOUNT = 32000
+NAME_SIZE = 256
 
 
 class Base64ImageField(serializers.ImageField):
@@ -17,8 +22,8 @@ class Base64ImageField(serializers.ImageField):
             try:
                 format, imgstr = data.split(';base64,')
                 ext = format.split('/')[-1]
-                if len(imgstr) > 100000:
-                    raise ValidationError("Изображение слишком большое")
+                if len(imgstr) > MAX_IMAGE_SIZE_BYTES:
+                    raise ValidationError('Изображение слишком большое')
                 return ContentFile(base64.b64decode(imgstr), name=f'temp.{ext}'
                                    )
             except Exception as e:
@@ -55,6 +60,42 @@ class MyUserCreateSerializer(BaseUserCreateSerializer):
         }
 
 
+class SubscriptionSerializer(serializers.ModelSerializer):
+    recipes = serializers.SerializerMethodField()
+    recipes_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'first_name',
+                  'last_name', 'recipes', 'recipes_count')
+
+    def validate(self, data):
+        user = self.context['request'].user
+        author = self.instance
+        if user == author:
+            raise serializers.ValidationError(
+                'Нельзя подписаться на самого себя.'
+            )
+        if user.subscriptions.filter(author=author).exists():
+            raise serializers.ValidationError(
+                'Вы уже подписаны на этого пользователя.'
+            )
+        return data
+
+    def get_recipes(self, obj):
+        # request = self.context.get('request')
+        recipes = obj.recipes.all()
+        return [{
+            'id': recipe.id,
+            'name': recipe.name,
+            'image': recipe.image.url if recipe.image else None,
+            'cooking_time': recipe.cooking_time
+        } for recipe in recipes]
+
+    def get_recipes_count(self, obj):
+        return obj.recipes.count()
+
+
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
@@ -73,10 +114,20 @@ class IngredientRecipeSerializer(serializers.ModelSerializer):
     measurement_unit = serializers.ReadOnlyField(
         source='ingredient.measurement_unit'
     )
+    amount = serializers.IntegerField(
+        min_value=MIN_AMOUNT,
+        max_value=MAX_AMOUNT)
 
     class Meta:
         model = IngredientRecipe
         fields = ('id', 'name', 'measurement_unit', 'amount')
+
+    def validate_amount(self, value):
+        if not MIN_AMOUNT <= value <= MAX_AMOUNT:
+            raise ValidationError(
+                f'Количество должно быть от {MIN_AMOUNT} до {MAX_AMOUNT}'
+            )
+        return value
 
 
 class RecipeListSerializer(serializers.ModelSerializer):
@@ -117,15 +168,25 @@ class RecipeCreateUpdateSerializer(serializers.ModelSerializer):
     image = Base64ImageField(required=True)
     text = serializers.CharField(source='description', required=True,
                                  write_only=True)
+    cooking_time = serializers.IntegerField(
+        min_value=MIN_AMOUNT,
+        max_value=MAX_AMOUNT)
 
     class Meta:
         model = Recipe
         fields = ('ingredients', 'tags', 'image', 'name',
                   'text', 'cooking_time')
         extra_kwargs = {
-            'name': {'max_length': 256},
-            'cooking_time': {'min_value': 1}
+            'name': {'max_length': NAME_SIZE},
         }
+
+    def validate_cooking_time(self, value):
+        if not MIN_AMOUNT <= value <= MAX_AMOUNT:
+            raise ValidationError(
+                f'Время приготовления должно быть от {MIN_AMOUNT}'
+                f'до {MAX_AMOUNT} минут'
+            )
+        return value
 
     def validate_ingredients(self, value):
         if not value:
@@ -149,23 +210,24 @@ class RecipeCreateUpdateSerializer(serializers.ModelSerializer):
             author=self.context['request'].user,
             **validated_data)
         recipe.tags.set(tags)
-        ingredient_objs = []
-        for ingredient in ingredients:
-            try:
-                ingredient_obj = Ingredient.objects.get(id=ingredient['id'])
-                ingredient_objs.append(
-                    IngredientRecipe(
-                        recipe=recipe,
-                        ingredient=ingredient_obj,
-                        amount=ingredient['amount']
-                    )
-                )
-            except Ingredient.DoesNotExist:
-                raise serializers.ValidationError(
-                    {'ingredients': (
-                        f'Ингредиент с id {ingredient["id"]} не найден')}
-                )
-        IngredientRecipe.objects.bulk_create(ingredient_objs)
+        self._create_recipe_ingredients(recipe, ingredients)
+        # ingredient_objs = []
+        # for ingredient in ingredients:
+        #     try:
+        #         ingredient_obj = Ingredient.objects.get(id=ingredient['id'])
+        #         ingredient_objs.append(
+        #             IngredientRecipe(
+        #                 recipe=recipe,
+        #                 ingredient=ingredient_obj,
+        #                 amount=ingredient['amount']
+        #             )
+        #         )
+        #     except Ingredient.DoesNotExist:
+        #         raise serializers.ValidationError(
+        #             {'ingredients': (
+        #                 f'Ингредиент с id {ingredient["id"]} не найден')}
+        #         )
+        # IngredientRecipe.objects.bulk_create(ingredient_objs)
         return recipe
 
     def update(self, instance, validated_data):
@@ -181,25 +243,42 @@ class RecipeCreateUpdateSerializer(serializers.ModelSerializer):
 
         if ingredients is not None:
             instance.infredients_recipe.all().delete()
+            self._create_recipe_ingredients(instance, ingredients)
 
+        # ingredient_objs = []
+        # for ingredient in ingredients:
+        #     try:
+        #         ingredient_obj = Ingredient.objects.get(id=ingredient['id'])
+        #         ingredient_objs.append(
+        #             IngredientRecipe(
+        #                 recipe=instance,
+        #                 ingredient=ingredient_obj,
+        #                 amount=ingredient['amount']
+        #             )
+        #         )
+        #     except Ingredient.DoesNotExist:
+        #         raise serializers.ValidationError(
+        #             {'ingredients': (
+        #                 f'Ингредиент с id {ingredient["id"]} не найден')}
+        #         )
+        # IngredientRecipe.objects.bulk_create(ingredient_objs)
+        return instance
+
+    def _create_recipe_ingredients(self, recipe, ingredients_data):
         ingredient_objs = []
-        for ingredient in ingredients:
+        for ingredient in ingredients_data:
             try:
                 ingredient_obj = Ingredient.objects.get(id=ingredient['id'])
-                ingredient_objs.append(
-                    IngredientRecipe(
-                        recipe=instance,
-                        ingredient=ingredient_obj,
-                        amount=ingredient['amount']
-                    )
-                )
             except Ingredient.DoesNotExist:
-                raise serializers.ValidationError(
-                    {'ingredients': (
-                        f'Ингредиент с id {ingredient["id"]} не найден')}
-                )
+                raise serializers.ValidationError({
+                    'ingredients': f'Ингредиент с id'
+                    f'{ingredient["id"]} не найден'
+                })
+            ingredient_objs.append(IngredientRecipe(
+                recipe=recipe,
+                ingredient=ingredient_obj,
+                amount=ingredient['amount']))
         IngredientRecipe.objects.bulk_create(ingredient_objs)
-        return instance
 
     def to_representation(self, instance):
         return RecipeListSerializer(
