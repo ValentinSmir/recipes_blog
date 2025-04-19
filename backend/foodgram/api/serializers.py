@@ -60,6 +60,12 @@ class MyUserCreateSerializer(BaseUserCreateSerializer):
         }
 
 
+class RecipeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Recipe
+        fields = ('id', 'name', 'image', 'cooking_time')
+
+
 class SubscriptionSerializer(serializers.ModelSerializer):
     recipes = serializers.SerializerMethodField()
     recipes_count = serializers.SerializerMethodField()
@@ -84,12 +90,7 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 
     def get_recipes(self, obj):
         recipes = obj.recipes.all()
-        return [{
-            'id': recipe.id,
-            'name': recipe.name,
-            'image': recipe.image.url if recipe.image else None,
-            'cooking_time': recipe.cooking_time
-        } for recipe in recipes]
+        return RecipeSerializer(recipes, many=True, context=self.context).data
 
     def get_recipes_count(self, obj):
         return obj.recipes.count()
@@ -120,13 +121,6 @@ class IngredientRecipeSerializer(serializers.ModelSerializer):
     class Meta:
         model = IngredientRecipe
         fields = ('id', 'name', 'measurement_unit', 'amount')
-
-    def validate_amount(self, value):
-        if not MIN_AMOUNT <= value <= MAX_AMOUNT:
-            raise ValidationError(
-                f'Количество должно быть от {MIN_AMOUNT} до {MAX_AMOUNT}'
-            )
-        return value
 
 
 class RecipeListSerializer(serializers.ModelSerializer):
@@ -178,14 +172,6 @@ class RecipeCreateUpdateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'name': {'max_length': NAME_SIZE},
         }
-
-    def validate_cooking_time(self, value):
-        if not MIN_AMOUNT <= value <= MAX_AMOUNT:
-            raise ValidationError(
-                f'Время приготовления должно быть от {MIN_AMOUNT}'
-                f'до {MAX_AMOUNT} минут'
-            )
-        return value
 
     def validate_ingredients(self, value):
         if not value:
